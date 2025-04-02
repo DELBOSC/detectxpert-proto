@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>DetectXpert – Prototype</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #map {
+        height: 100%;
+      }
+      #controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(255,255,255,0.9);
+        padding: 10px;
+        z-index: 10;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        font-family: sans-serif;
+      }
+      button {
+        display: block;
+        margin: 5px 0;
+        width: 100%;
+        padding: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <div><strong>DetectXpert – Prototype</strong></div>
+      <button onclick="addFinding()">Ajouter une trouvaille</button>
+      <button onclick="exportKML()">Exporter le parcours (KML)</button>
+    </div>
+    <div id="map"></div>
+
+    <script>
+      let map, pathPolyline, userPath = [], findings = [];
+
+      function initMap() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 18,
+          center: { lat: 0, lng: 0 },
+          mapTypeId: "hybrid"
+        });
+
+        pathPolyline = new google.maps.Polyline({
+          path: [],
+          geodesic: true,
+          strokeColor: "#00FF00",
+          strokeOpacity: 0.7,
+          strokeWeight: 5,
+          map: map
+        });
+
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(updatePosition, handleLocationError, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 10000
+          });
+        } else {
+          alert("Géolocalisation non supportée.");
+        }
+      }
+
+      function updatePosition(position) {
+        const pos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+
+        // Vérifie si on passe déjà dans une zone couverte (simple distance)
+        if (userPath.some(p => distanceBetween(p, pos) < 1.5)) {
+          if (navigator.vibrate) navigator.vibrate(300);
+          if (Notification.permission === "granted") {
+            new Notification("Zone déjà fouillée !");
+          }
+        }
+
+        userPath.push(pos);
+        pathPolyline.setPath(userPath);
+        map.setCenter(pos);
+      }
+
+      function addFinding() {
+        if (userPath.length === 0) {
+          alert("Position inconnue.");
+          return;
+        }
+        const pos = userPath[userPath.length - 1];
+        new google.maps.Marker({
+          position: pos,
+          map: map,
+          icon: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
+          title: "Trouvaille détectée"
+        });
+        findings.push(pos);
+        alert("Trouvaille enregistrée !");
+      }
+
+      function exportKML() {
+        let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Parcours DetectXpert</name>
+    <Style id="lineStyle"><LineStyle><color>ff00ff00</color><width>4</width></LineStyle></Style>
+    <Placemark><name>Parcours</name><styleUrl>#lineStyle</styleUrl><LineString><coordinates>`;
+
+        userPath.forEach(p => {
+          kml += `${p.lng},${p.lat},0 `;
+        });
+
+        kml += `</coordinates></LineString></Placemark>`;
+
+        findings.forEach((f, i) => {
+          kml += `<Placemark><name>Trouvaille ${i+1}</name><Point><coordinates>${f.lng},${f.lat},0</coordinates></Point></Placemark>`;
+        });
+
+        kml += `</Document></kml>`;
+
+        const blob = new Blob([kml], {type: 'application/vnd.google-earth.kml+xml'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "detectxpert_parcours.kml";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      function handleLocationError(error) {
+        console.error("Erreur de géolocalisation :", error);
+        alert("Impossible de récupérer votre position.");
+      }
+
+      function distanceBetween(p1, p2) {
+        const R = 6371000; // m
+        const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+        const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+    </script>
+
+    <!-- Google Maps avec ta clé intégrée -->
+    <script async
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBIVcDFgxTTZOWbYqZMgih3CnguCeX-ISM&callback=initMap">
+    </script>
+  </body>
+</html>
